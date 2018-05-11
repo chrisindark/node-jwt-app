@@ -61,3 +61,7 @@ The JWT must be sent on the `Authorization` header as follows: `Authorization: B
 ## Running it
 
 Just clone the repository, run `npm install` and then `node ./bin/www`. That's it :).
+
+docker build -t node-jwt-app_web .
+docker run --rm -it -p 8000:8000 node-jwt-app_web
+
