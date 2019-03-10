@@ -1,5 +1,7 @@
+var varsConfig = require('./vars-config');
+
 var jwtConfig = {
-  "secret": "no-secret"
+  'secret': varsConfig.jwtSecret
 };
 
 module.exports = jwtConfig;

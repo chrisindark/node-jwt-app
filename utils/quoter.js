@@ -1,4 +1,4 @@
-var quotes = require('../models/quotes.json');
+var quotes = require('./quotes.json');
 
 module.exports = {
   getRandomOne: function() {

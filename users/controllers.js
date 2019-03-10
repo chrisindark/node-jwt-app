@@ -1,32 +1,43 @@
+var Promise = require('bluebird');
+var paginate = require('express-paginate');
+
 var validatorCheck = require('express-validator/check');
+
 var validatorMiddlewareOptions = require('../config/express-validator-config');
 
 var User = require('./models');
 
+
 var filterColumns = ['username', 'email'];
-var orderingColumns = ['createdAt', '-createdAt'];
-var pageSizes = [10, 20, 50, 100];
+var orderingColumns = ['createdAt', '-createdAt', 'updatedAt', '-updatedAt'];
+var pageSizes = [2, 5, 10, 20, 50, 100];
 
 // var list = function (req, res) {
-//     User.find(function (err, users) {
-//       if (err) {
-//         res.status(400).send(err);
-//       }
-//       res.json(users);
-//     });
+//   User.find(function (err, users) {
+//     if (err) {
+//       res.status(400).send(err);
+//     }
+//     res.json(users);
+//   });
 // };
 
 var list = function (req, res) {
   var paginateOptions = {};
+  paginateOptions.page = 1;
   if (req.query.page) {
-    paginateOptions.page = req.query.page;
+    paginateOptions.page = parseInt(req.query.page, 10);
   }
+
   paginateOptions.limit = pageSizes[0];
   if (req.query.limit && pageSizes.indexOf(parseInt(req.query.limit, 10)) !== -1) {
     paginateOptions.limit = req.query.limit;
   }
+
+  paginateOptions.skip = (paginateOptions.page - 1) * paginateOptions.limit;
+
+  var sortOptions = orderingColumns[0];
   if (req.query.o && orderingColumns.indexOf(req.query.o) !== -1) {
-    paginateOptions.sort = req.query.o;
+    sortOptions = req.query.o;
   }
 
   var filterOptions = {};
@@ -36,13 +47,70 @@ var list = function (req, res) {
     }
   });
 
-  User
-    .paginate(filterOptions, paginateOptions,
-    function (err, users) {
-      if (err) {
-        res.status(400).json(err);
+  // query for results
+  var resultsQuery = User
+    .find(filterOptions)
+    .sort(sortOptions)
+    .limit(paginateOptions.limit)
+    .skip(paginateOptions.skip)
+    .lean()
+    .exec();
+
+  // query for total count
+  var resultsCountQuery = User.count();
+
+  Promise.all([resultsQuery, resultsCountQuery])
+    .then(function (values) {
+      var pageCount = Math.ceil(values[1] / req.query.limit);
+      var nextPage = null;
+      var previousPage = null;
+
+      var pages = paginate.getArrayPages(req)(3, pageCount, paginateOptions.page);
+      var pagesObj = {};
+      pages.map(function (page) {
+        pagesObj[page.number] = page;
+      });
+
+      if (paginate.hasNextPages(req)(pageCount)) {
+        nextPage = pagesObj[paginateOptions.page + 1].url;
       }
-      res.json(users);
+      if (paginateOptions.page > 1) {
+        previousPage = pagesObj[paginateOptions.page - 1].url;
+      }
+
+      res.json({
+        results: values[0],
+        count: values[1],
+        next: nextPage,
+        previous: previousPage
+      });
+    })
+    .catch(function (err) {
+      res.status(400).json(err);
+    });
+};
+
+var create = function (req, res) {
+  var errors = validatorCheck.validationResult(req);
+  if (!errors.isEmpty()) {
+    return res.status(400).json(
+      errors.formatWith(validatorMiddlewareOptions.errorFormatter).mapped()
+    );
+  }
+
+  var user = new User();
+  user.username = req.body.username;
+  user.email = req.body.email;
+  user.setPassword(req.body.password);
+
+  user.save()
+    .then(function(user) {
+      res.json(user.sendToken());
+    })
+    .catch(function (err) {
+      if (err) {
+        res.send(err);
+      }
     });
 };
 
@@ -96,6 +164,7 @@ var remove = function (req, res) {
 
 module.exports = {
   list: list,
+  create: create,
   detail: detail,
   remove: remove,
   update: update
